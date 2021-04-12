@@ -229,4 +229,50 @@ class KoinModuleParserTest {
 
         dependencyResolverMock.should.receive { getDependencyNames("TestDependency") }
     }
+
+    @Test
+    fun `should parse module with viewModel and factory`() {
+        //given
+        val moduleContent = """
+            import org.koin.androidx.viewmodel.dsl.viewModel
+            import org.koin.dsl.module
+            val testModule = module {
+                factory { 
+                    TestDependency(get())
+                }
+                viewModel {
+                    TestViewModel(get())
+                }
+            }
+        """.trimIndent()
+
+
+        whenever(dependencyResolverMock.getDependencyNames("TestDependency")).thenReturn(listOf("deps"))
+        whenever(dependencyResolverMock.getDependencyNames("TestViewModel")).thenReturn(listOf("viewModelDeps"))
+
+        //when
+        val parsedModule = createKoinModuleParser().parse(moduleContent)
+
+        //then
+        parsedModule.should.beEqualTo(
+            KoinModule(
+                name = "testModule",
+                dependencies = listOf(
+                    Dependency.Factory(
+                        name = "TestDependency",
+                        dependencies = listOf("deps")
+                    ),
+                    Dependency.ViewModel(
+                        name = "TestViewModel",
+                        dependencies = listOf("viewModelDeps")
+                    )
+                )
+            )
+        )
+
+        dependencyResolverMock.should.receive {
+            getDependencyNames("TestDependency")
+            getDependencyNames("TestViewModel")
+        }
+    }
 }

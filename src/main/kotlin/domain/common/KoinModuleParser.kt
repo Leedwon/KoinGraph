@@ -3,12 +3,12 @@ package domain.common
 import domain.model.Dependency
 import domain.model.KoinModule
 
-class KoinModuleParser(
-    private val dependencyResolver: DependencyResolver
-) {
+class KoinModuleParser(private val dependencyResolver: DependencyResolver) {
     private val moduleStartRegex = Regex("val.*=\\s*module\\s*\\{")
     private val dependencyRegex = Regex("(single|viewModel|factory)")
     private val parametersRegex = Regex("parameters.*->")
+    private val dependenciesGroupsRegex =
+        Regex("(single|viewModel|factory|scoped)((?!(single|viewModel|factory|scoped)).)*\\{((?!(single|viewModel|factory|scoped)).)*}")
 
     fun parse(content: String): KoinModule {
         val match = moduleStartRegex.find(content)!!
@@ -19,33 +19,37 @@ class KoinModuleParser(
 
         val dependencyMatch = dependencyRegex.find(moduleContent)!!
         val dependencyContent = moduleContent.substring(dependencyMatch.range.first)
-        val dependency = parseDependency(dependencyContent)
+        val dependencies = parseDependencies(dependencyContent)
 
         return KoinModule(
             name = moduleName,
-            dependencies = listOf(dependency)
+            dependencies = dependencies
         )
     }
 
-    private fun parseDependency(dependency: String): Dependency {
-        val (type, content) = dependency.split("{", limit = 2)
-        val actualContent = content.replace(parametersRegex, "")
+    private fun parseDependencies(dependenciesString: String): List<Dependency> {
+        val dependenciesStrings = dependenciesGroupsRegex.findAll(dependenciesString.replace("\n", "")).map { it.value }
 
-        val (name, dependencyString) = actualContent.substring(0, actualContent.indexOf("}")).trim().split("(")
-        val dependencies: List<String> = if (dependencyString.trim() == ")") {
-            emptyList()
-        } else {
-            dependencyResolver.getDependencyNames(name)
-        }
+        return dependenciesStrings.map { dependency ->
+            val (type, content) = dependency.split("{")
+            val actualContent = content.replace(parametersRegex, "")
 
-        val actualType = type.trim().split("<")[0] //remove type if one was specified i.e single<TestDependency>
+            val actualType = type.trim().split("<")[0] //remove type if one was specified i.e single<TestDependency>
 
-        return when (actualType) {
-            "single" -> Dependency.Singleton(name, dependencies)
-            "viewModel" -> Dependency.ViewModel(name, dependencies)
-            "factory" -> Dependency.Factory(name, dependencies)
-            else -> error("unknown dependency type $type")
-            //todo scopes
-        }
+            val (name, dependencyString) = actualContent.substring(0, actualContent.indexOf("}")).trim().split("(")
+            val dependencies: List<String> = if (dependencyString.trim() == ")") {
+                emptyList()
+            } else {
+                dependencyResolver.getDependencyNames(name)
+            }
+
+            when (actualType) {
+                "single" -> Dependency.Singleton(name, dependencies)
+                "viewModel" -> Dependency.ViewModel(name, dependencies)
+                "factory" -> Dependency.Factory(name, dependencies)
+                else -> error("unknown dependency type $type")
+                //todo scopes
+            }
+        }.toList()
     }
 }

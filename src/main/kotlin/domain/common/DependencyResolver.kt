@@ -1,5 +1,9 @@
 package domain.common
 
 interface DependencyResolver {
-    fun getDependencyNames(dependencyName: String) : List<String>
+    /**
+     * @param className - name of class which dependencies we want to get
+     * @return list of dependency names for class className
+     */
+    fun getDependencyNames(className: String) : List<String>
 }

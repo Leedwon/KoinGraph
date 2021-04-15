@@ -1,27 +1,27 @@
 package domain.model
 
-sealed class Dependency {
+sealed class Component {
     abstract val name: String
     abstract val dependencies: List<String>
 
     data class Singleton(
         override val name: String,
         override val dependencies: List<String>
-    ) : Dependency()
+    ) : Component()
 
     data class ViewModel(
         override val name: String,
         override val dependencies: List<String>
-    ) : Dependency()
+    ) : Component()
 
     data class Factory(
         override val name: String,
         override val dependencies: List<String>
-    ) : Dependency()
+    ) : Component()
 
     data class Scope(
         override val name: String,
         override val dependencies: List<String>,
         val typeName: String
-    ) : Dependency()
+    ) : Component()
 }

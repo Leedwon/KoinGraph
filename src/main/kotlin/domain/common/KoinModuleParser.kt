@@ -1,53 +1,52 @@
 package domain.common
 
-import domain.model.Dependency
+import domain.model.Component
 import domain.model.KoinModule
 
 class KoinModuleParser(private val dependencyResolver: DependencyResolver) {
+    //captures format of: val testModule = module {
     private val moduleStartRegex = Regex("val.*=\\s*module\\s*\\{")
-    private val dependencyRegex = Regex("(single|viewModel|factory)")
-    private val parametersRegex = Regex("parameters.*->")
-    private val dependenciesGroupsRegex =
+
+    private val moduleParametersRegex = Regex("parameters.*->")
+    private val componentsRegex =
         Regex("(single|viewModel|factory|scoped)((?!(single|viewModel|factory|scoped)).)*\\{((?!(single|viewModel|factory|scoped)).)*}")
 
     fun parse(content: String): KoinModule {
-        val match = moduleStartRegex.find(content)!!
+        val moduleMatch = moduleStartRegex.find(content)!!
 
-        val moduleName = match.value.substring(0, match.value.indexOf("=")).split(" ")[1]
+        val moduleName = moduleMatch.value.split(" ").filter { it.isNotEmpty() }[1]
 
-        val moduleContent = content.substring(match.range.last)
+        val moduleContent = content.substring(moduleMatch.range.last)
 
-        val dependencyMatch = dependencyRegex.find(moduleContent)!!
-        val dependencyContent = moduleContent.substring(dependencyMatch.range.first)
-        val dependencies = parseDependencies(dependencyContent)
+        val components = parseComponents(moduleContent)
 
         return KoinModule(
             name = moduleName,
-            dependencies = dependencies
+            components = components
         )
     }
 
-    private fun parseDependencies(dependenciesString: String): List<Dependency> {
-        val dependenciesStrings = dependenciesGroupsRegex.findAll(dependenciesString.replace("\n", "")).map { it.value }
+    private fun parseComponents(moduleContent: String): List<Component> {
+        val components = componentsRegex.findAll(moduleContent.remove("\n")).map { it.value }
 
-        return dependenciesStrings.map { dependency ->
-            val (type, content) = dependency.split("{")
-            val actualContent = content.replace(parametersRegex, "")
+        return components.map { component ->
+            val (componentTypeRaw, componentDefinitionRaw) = component.split("{")
+            val componentDefinition = componentDefinitionRaw.replace(moduleParametersRegex, "") //remove koin's "parameters -> ..." if exists
+            val componentType = componentTypeRaw.trim().split("<")[0] //remove type if one was specified i.e single<TestDependency>
 
-            val actualType = type.trim().split("<")[0] //remove type if one was specified i.e single<TestDependency>
-
-            val (name, dependencyString) = actualContent.substring(0, actualContent.indexOf("}")).trim().split("(")
-            val dependencies: List<String> = if (dependencyString.trim() == ")") {
+            val (dependencyName, dependencyString) = componentDefinition.trim().split("(")
+            val dependencies: List<String> = if (dependencyString.remove("}").trim() == ")") {
+                //it means that dependency has empty constructor
                 emptyList()
             } else {
-                dependencyResolver.getDependencyNames(name)
+                dependencyResolver.getDependencyNames(dependencyName)
             }
 
-            when (actualType) {
-                "single" -> Dependency.Singleton(name, dependencies)
-                "viewModel" -> Dependency.ViewModel(name, dependencies)
-                "factory" -> Dependency.Factory(name, dependencies)
-                else -> error("unknown dependency type $type")
+            when (componentType) {
+                "single" -> Component.Singleton(dependencyName, dependencies)
+                "viewModel" -> Component.ViewModel(dependencyName, dependencies)
+                "factory" -> Component.Factory(dependencyName, dependencies)
+                else -> error("unknown dependency type $componentType")
                 //todo scopes
             }
         }.toList()
